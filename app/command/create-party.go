@@ -2,17 +2,17 @@ package command
 
 import (
 	"github.com/ElioenaiFerrari/youdecide/app/dto"
-	"github.com/ElioenaiFerrari/youdecide/app/protocol"
 	"github.com/ElioenaiFerrari/youdecide/domain/entity"
+	"github.com/go-playground/validator/v10"
 	"gorm.io/gorm"
 )
 
 type CreatePartyCommand struct {
 	db        *gorm.DB
-	validator protocol.ValidateStructProtocol
+	validator *validator.Validate
 }
 
-func NewCreatePartyCommand(db *gorm.DB, validator protocol.ValidateStructProtocol) *CreatePartyCommand {
+func NewCreatePartyCommand(db *gorm.DB, validator *validator.Validate) *CreatePartyCommand {
 	return &CreatePartyCommand{
 		db:        db,
 		validator: validator,
@@ -25,7 +25,7 @@ func (c *CreatePartyCommand) Exec(createPartyDTO dto.CreatePartyDTO) (*entity.Pa
 		Name:     createPartyDTO.Name,
 	}
 
-	if err := c.validator.ValidateStruct(party); err != nil {
+	if err := c.validator.Struct(party); err != nil {
 		return nil, err
 	}
 

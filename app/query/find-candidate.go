@@ -1,8 +1,6 @@
 package query
 
 import (
-	"errors"
-
 	"github.com/ElioenaiFerrari/youdecide/domain/entity"
 	"gorm.io/gorm"
 )
@@ -21,7 +19,7 @@ func (q *FindCandidateQuery) Exec(where ...interface{}) (*entity.Candidate, erro
 	var candidate entity.Candidate
 
 	if err := q.db.First(&candidate, where...).Error; err != nil {
-		return nil, errors.New("candidate not found")
+		return nil, err
 	}
 
 	return &candidate, nil

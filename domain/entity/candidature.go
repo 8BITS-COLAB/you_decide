@@ -1,8 +1,9 @@
 package entity
 
 type Candidature struct {
-	CandidateCode string     `json:"candidate_code" gorm:"column:candidate_code"`
-	Candidate     *Candidate `json:"candidate" gorm:"foreignKey:CandidateCode"`
+	Code          string     `json:"code" gorm:"column:code"`
+	CandidateName string     `json:"candidate_name" gorm:"column:candidate_name"`
+	Candidate     *Candidate `json:"candidate" gorm:"foreignKey:CandidateName"`
 	Position      string     `json:"position" gorm:"column:position"`
 	Signature     string     `json:"signature" gorm:"column:signature;primaryKey"`
 	Year          int        `json:"year" gorm:"column:year"`
