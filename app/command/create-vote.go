@@ -2,6 +2,7 @@ package command
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -40,49 +41,54 @@ func NewCreateVoteCommand(
 	}
 }
 
-func (c *CreateVoteCommand) Exec(createVoteDTO dto.CreateVoteDTO) error {
-	candidature, err := c.findCandidatureQuery.Exec("code = ? AND year = ?", createVoteDTO.CandidatureCode, time.Now().Year())
-	if err != nil {
-		return err
-	}
+func (c *CreateVoteCommand) Exec(createVotesDTO []dto.CreateVoteDTO) error {
+	for _, createVoteDTO := range createVotesDTO {
+		candidature, err := c.findCandidatureQuery.Exec("code = ? AND year = ?", createVoteDTO.CandidatureCode, time.Now().Year())
+		if err != nil {
+			return err
+		}
 
-	voterAddress := valueobject.GetAddress(createVoteDTO.Mnemonic, createVoteDTO.Password)
-	voter, err := c.findVoterQuery.Exec("address = ?", voterAddress)
-	if err != nil {
-		return err
-	}
+		key := fmt.Sprintf("%s:%s", createVoteDTO.Email, createVoteDTO.Password)
+		voterAddress := valueobject.GetAddress(createVoteDTO.Mnemonic, key)
+		voter, err := c.findVoterQuery.Exec("address = ?", voterAddress)
+		if err != nil {
+			return err
+		}
+		// TODO: Insert many votes
+		vote := entity.Vote{
+			CandidatureCode: candidature.Code,
+			VoterAddress:    voter.Address,
+		}
 
-	vote := entity.Vote{
-		CandidatureCode: candidature.Code,
-		VoterAddress:    voter.Address,
-	}
+		if err := c.validator.Struct(vote); err != nil {
+			return err
+		}
 
-	if err := c.validator.Struct(vote); err != nil {
-		return err
-	}
+		lastVote, err := c.findLastVoteQuery.Exec(voter.Address)
 
-	lastVote, err := c.findLastVoteQuery.Exec(voter.Address)
+		if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+			block, err := c.createBlockCommand.Exec([]entity.Vote{vote})
+			if err != nil {
+				return err
+			}
 
-	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("new block inserted with index: %d", block.Index)
+			return nil
+		}
+
+		if lastVote.Candidature.Year == time.Now().Year() {
+			return errors.New("voter already voted in this year")
+		}
+
 		block, err := c.createBlockCommand.Exec([]entity.Vote{vote})
 		if err != nil {
 			return err
 		}
 
 		log.Printf("new block inserted with index: %d", block.Index)
-		return nil
-	}
 
-	if lastVote.Candidature.Year == time.Now().Year() {
-		return errors.New("voter already voted in this year")
-	}
-
-	block, err := c.createBlockCommand.Exec([]entity.Vote{vote})
-	if err != nil {
 		return err
 	}
 
-	log.Printf("new block inserted with index: %d", block.Index)
-
-	return err
+	return nil
 }

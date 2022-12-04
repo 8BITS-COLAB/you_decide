@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  app:
+    hostname: app.youdecide.local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=youdecide
+      - POSTGRES_HOSTNAME=localhost
+
+    volumes:
+      - ../..:/workspaces:cached
+
+  db:
+    hostname: db.youdecide.local
+    image: postgres:latest
+    restart: unless-stopped
+    volumes:
+      - ./database:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=youdecide
+      - POSTGRES_HOSTNAME=localhost
+    ports:
+      - 5432:5432
+
+  cache:
+    hostname: cache.youdecide.local
+    image: redis:latest
+    restart: unless-stopped
+    ports:
+      - 6379:6379
+    volumes:
+      - cache:/data
+
+networks:
+  youdecide:
+    driver: bridge

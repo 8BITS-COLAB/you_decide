@@ -1,6 +1,8 @@
 package command
 
 import (
+	"fmt"
+
 	"github.com/ElioenaiFerrari/youdecide/app/dto"
 	"github.com/ElioenaiFerrari/youdecide/domain/entity"
 	valueobject "github.com/ElioenaiFerrari/youdecide/domain/value-object"
@@ -21,7 +23,8 @@ func NewCreateVoterCommand(db *gorm.DB, validator *validator.Validate) *CreateVo
 }
 
 func (c *CreateVoterCommand) Exec(createVoterDTO dto.CreateVoterDTO) (*entity.Voter, *string, error) {
-	address, mnemonic := valueobject.NewAddress(createVoterDTO.Password)
+	key := fmt.Sprintf("%s:%s", createVoterDTO.Email, createVoterDTO.Password)
+	address, mnemonic := valueobject.NewAddress(key)
 
 	voter := entity.Voter{
 		Address: address,
