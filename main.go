@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/ElioenaiFerrari/youdecide/app/command"
@@ -29,7 +30,7 @@ func take(items map[string]cache.Item, size int) []dto.CreateVoteDTO {
 	return nil
 }
 
-func worker(ch chan int, votesPool *cache.Cache, createVoteCommand *command.CreateVoteCommand, size int) {
+func worker(ch chan int, rwm *sync.RWMutex, votesPool *cache.Cache, createVoteCommand *command.CreateVoteCommand, size int) {
 	for range time.Tick(time.Second) {
 		poolSize := votesPool.ItemCount()
 		ch <- poolSize
@@ -38,11 +39,14 @@ func worker(ch chan int, votesPool *cache.Cache, createVoteCommand *command.Crea
 			items := votesPool.Items()
 			votes := take(items, size)
 
+			rwm.Lock()
 			createVoteCommand.Exec(votes)
+			rwm.Unlock()
 
 			for k := range items {
 				votesPool.Delete(k)
 			}
+
 		}
 	}
 }
@@ -81,7 +85,7 @@ func main() {
 
 	ch := make(chan int)
 
-	go worker(ch, votesPool, createVoteCommand, 2)
+	go worker(ch, new(sync.RWMutex), votesPool, createVoteCommand, 2)
 
 	party, err := createPartyCommand.Exec(dto.CreatePartyDTO{
 		Initials: "PT",

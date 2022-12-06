@@ -42,6 +42,7 @@ func NewCreateVoteCommand(
 }
 
 func (c *CreateVoteCommand) Exec(createVotesDTO []dto.CreateVoteDTO) error {
+	var votes []entity.Vote
 	for _, createVoteDTO := range createVotesDTO {
 		candidature, err := c.findCandidatureQuery.Exec("code = ? AND year = ?", createVoteDTO.CandidatureCode, time.Now().Year())
 		if err != nil {
@@ -54,7 +55,6 @@ func (c *CreateVoteCommand) Exec(createVotesDTO []dto.CreateVoteDTO) error {
 		if err != nil {
 			return err
 		}
-		// TODO: Insert many votes
 		vote := entity.Vote{
 			CandidatureCode: candidature.Code,
 			VoterAddress:    voter.Address,
@@ -67,28 +67,23 @@ func (c *CreateVoteCommand) Exec(createVotesDTO []dto.CreateVoteDTO) error {
 		lastVote, err := c.findLastVoteQuery.Exec(voter.Address)
 
 		if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
-			block, err := c.createBlockCommand.Exec([]entity.Vote{vote})
-			if err != nil {
-				return err
-			}
-
-			log.Printf("new block inserted with index: %d", block.Index)
-			return nil
+			votes = append(votes, vote)
+			continue
 		}
 
 		if lastVote.Candidature.Year == time.Now().Year() {
 			return errors.New("voter already voted in this year")
 		}
 
-		block, err := c.createBlockCommand.Exec([]entity.Vote{vote})
-		if err != nil {
-			return err
-		}
+		votes = append(votes, vote)
+	}
 
-		log.Printf("new block inserted with index: %d", block.Index)
-
+	block, err := c.createBlockCommand.Exec(votes)
+	if err != nil {
 		return err
 	}
+
+	log.Printf("new block inserted with index: %d", block.Index)
 
 	return nil
 }
