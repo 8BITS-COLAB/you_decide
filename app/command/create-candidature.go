@@ -32,7 +32,7 @@ func (c *CreateCandidatureCommand) Exec(createCandidatureDTO dto.CreateCandidatu
 		return nil, err
 	}
 
-	signature, _ := valueobject.NewSignature(fmt.Sprintf("%s:%d", createCandidatureDTO.Position, createCandidatureDTO.Year), 3)
+	signature, _ := valueobject.NewSignature(fmt.Sprintf("%s:%s:%d", createCandidatureDTO.Code, createCandidatureDTO.Position, createCandidatureDTO.Year), 3)
 
 	candidature := entity.Candidature{
 		CandidateName: candidate.Name,

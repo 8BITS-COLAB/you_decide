@@ -2,53 +2,55 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/ElioenaiFerrari/youdecide/app/command"
 	"github.com/ElioenaiFerrari/youdecide/app/dto"
 	"github.com/ElioenaiFerrari/youdecide/app/query"
 	"github.com/ElioenaiFerrari/youdecide/domain/entity"
+	"github.com/bytedance/sonic"
 	"github.com/go-playground/validator/v10"
-	"github.com/patrickmn/go-cache"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+	"github.com/olahol/melody"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-func take(items map[string]cache.Item, size int) []dto.CreateVoteDTO {
-	var votes []dto.CreateVoteDTO
-
-	for _, v := range items {
-		vote := v.Object.(dto.CreateVoteDTO)
-		votes = append(votes, vote)
-		if len(votes) == size {
-			return votes
-		}
-	}
-
-	return nil
+type Template struct {
+	templates *template.Template
 }
 
-func worker(ch chan int, rwm *sync.RWMutex, votesPool *cache.Cache, createVoteCommand *command.CreateVoteCommand, size int) {
+func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
+	return t.templates.ExecuteTemplate(w, name, data)
+}
+
+var votesPool []dto.CreateVoteDTO
+
+func worker(ch chan int, rwm *sync.RWMutex, createVoteCommand *command.CreateVoteCommand, size int) {
 	for range time.Tick(time.Second) {
-		poolSize := votesPool.ItemCount()
+		poolSize := len(votesPool)
 		ch <- poolSize
 
 		if poolSize >= size {
-			items := votesPool.Items()
-			votes := take(items, size)
-
 			rwm.Lock()
-			createVoteCommand.Exec(votes)
-			rwm.Unlock()
+			votes := votesPool[:size-1]
 
-			for k := range items {
-				votesPool.Delete(k)
+			if err := createVoteCommand.Exec(votes); err != nil {
+				log.Fatal(err)
+			} else {
+				votesPool = votesPool[size:]
 			}
 
+			rwm.Unlock()
 		}
 	}
+
 }
 
 func main() {
@@ -58,8 +60,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	votesPool := cache.New(15*time.Minute, 30*time.Minute)
 
 	db.AutoMigrate(&entity.Party{})
 	db.AutoMigrate(&entity.Candidate{})
@@ -72,6 +72,7 @@ func main() {
 	findLastBlockQuery := query.NewFindLastBlockQuery(db)
 	findCandidatureQuery := query.NewFindCandidatureQuery(db)
 	findCandidateQuery := query.NewFindCandidateQuery(db)
+	listCandidaturesQuery := query.NewListCandidaturesQuery(db)
 	findPartyQuery := query.NewFindPartyQuery(db)
 	findVoterQuery := query.NewFindVoterQuery(db)
 	findLastVoteQuery := query.NewFindLastVoteQuery(db)
@@ -80,42 +81,54 @@ func main() {
 	createPartyCommand := command.NewCreatePartyCommand(db, validator)
 	createCandidatureCommand := command.NewCreateCandidatureCommand(db, validator, findCandidateQuery)
 	createBlockCommand := command.NewCreateBlockCommand(db, findLastBlockQuery)
+	createGenesisBlockCommand := command.NewCreateGenesisBlockCommand(db)
 	createVoteCommand := command.NewCreateVoteCommand(db, createBlockCommand, validator, findCandidatureQuery, findVoterQuery, findLastVoteQuery)
-	createVotePoolCommand := command.NewCreateVotePoolCommand(validator, votesPool)
+	createVotePoolCommand := command.NewCreateVotePoolCommand(validator, &votesPool)
 
 	ch := make(chan int)
 
-	go worker(ch, new(sync.RWMutex), votesPool, createVoteCommand, 2)
+	go func() {
+		for msg := range ch {
+			fmt.Printf("pool size in %d\n", msg)
+		}
+	}()
+	go worker(ch, new(sync.RWMutex), createVoteCommand, 2)
 
-	party, err := createPartyCommand.Exec(dto.CreatePartyDTO{
+	pt, _ := createPartyCommand.Exec(dto.CreatePartyDTO{
 		Initials: "PT",
 		Name:     "Partido dos Trabalhadores",
 	})
 
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	candidate, err := createCandidateCommand.Exec(dto.CreateCandidateDTO{
-		Code:          "13",
-		Name:          "LULA",
-		PartyInitials: party.Initials,
+	psl, _ := createPartyCommand.Exec(dto.CreatePartyDTO{
+		Initials: "PSL",
+		Name:     "Partido Social Liberal",
 	})
 
-	if err != nil {
-		log.Fatal(err)
-	}
+	lula, _ := createCandidateCommand.Exec(dto.CreateCandidateDTO{
+		Name:          "Lula",
+		PartyInitials: pt.Initials,
+		ImageURL:      "https://s2.glbimg.com/4whWaUxUmO9OZKbeUXLvPK9nnZ0=/1200x/smart/filters:cover():strip_icc()/i.s3.glbimg.com/v1/AUTH_59edd422c0c84a879bd37670ae4f538a/internal_photos/bs/2022/N/A/x4O7j9R5i4N0ecWBU7vw/lula-31.jpg",
+	})
 
-	candidature, err := createCandidatureCommand.Exec(dto.CreateCandidatureDTO{
+	bolsonaro, _ := createCandidateCommand.Exec(dto.CreateCandidateDTO{
+		Name:          "Bolsonaro",
+		PartyInitials: psl.Initials,
+		ImageURL:      "https://uploads.metropoles.com/wp-content/uploads/2022/11/01174231/Apo%CC%81s-reunia%CC%83o-com-ministros-e-aliados-jair-Bolsonaro-fara%CC%81-primeiro-pronunciamento-aos-brasileiros-9.jpeg",
+	})
+
+	candidatureLula, _ := createCandidatureCommand.Exec(dto.CreateCandidatureDTO{
 		Code:          "13",
-		CandidateName: candidate.Name,
-		Position:      "Presidency",
+		CandidateName: lula.Name,
+		Position:      "presidência",
 		Year:          2022,
 	})
 
-	if err != nil {
-		log.Fatal(err)
-	}
+	_, _ = createCandidatureCommand.Exec(dto.CreateCandidatureDTO{
+		Code:          "22",
+		CandidateName: bolsonaro.Name,
+		Position:      "presidência",
+		Year:          2022,
+	})
 
 	voter1, mnemonic1, err := createVoterCommand.Exec(dto.CreateVoterDTO{
 		Email:    "elioenaferrari@gmail.com",
@@ -128,36 +141,78 @@ func main() {
 		log.Fatal(err)
 	}
 
-	voter2, mnemonic2, err := createVoterCommand.Exec(dto.CreateVoterDTO{
+	_, mnemonic2, err := createVoterCommand.Exec(dto.CreateVoterDTO{
 		Email:    "elioenaferrari2@gmail.com",
 		Phone:    "27992150058",
 		Name:     "Eli",
 		Password: "123456",
 	})
 
+	log.Println("MNEMONIC", *mnemonic2)
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	block, err := createGenesisBlockCommand.Exec()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Printf("GENESIS BLOCK CREATED %d", block.Index)
+
 	if err := createVotePoolCommand.Exec(dto.CreateVoteDTO{
 		Email:           voter1.Email,
-		CandidatureCode: candidature.Code,
+		CandidatureCode: candidatureLula.Code,
 		Mnemonic:        *mnemonic1,
 		Password:        "123456",
 	}); err != nil {
 		log.Fatal(err)
 	}
 
-	if err := createVotePoolCommand.Exec(dto.CreateVoteDTO{
-		Email:           voter2.Email,
-		CandidatureCode: candidature.Code,
-		Mnemonic:        *mnemonic2,
-		Password:        "123456",
-	}); err != nil {
-		log.Fatal(err)
+	app := echo.New()
+	v1 := app.Group("/api/v1")
+	websocket := melody.New()
+
+	app.Use(middleware.Logger())
+
+	t := &Template{
+		templates: template.Must(template.ParseGlob("public/views/*.html")),
 	}
 
-	for msg := range ch {
-		fmt.Printf("pool size in %d\n", msg)
-	}
+	app.Renderer = t
+
+	app.GET("/", func(c echo.Context) error {
+		candidatures, err := listCandidaturesQuery.Exec("year = ?", time.Now().Year())
+
+		if err != nil {
+			return err
+		}
+
+		return c.Render(http.StatusOK, "index", candidatures)
+	})
+
+	websocket.HandleMessage(func(s *melody.Session, b []byte) {
+		var createVoteDTO dto.CreateVoteDTO
+
+		if err := sonic.Unmarshal(b, &createVoteDTO); err != nil {
+			s.Write([]byte(err.Error()))
+			return
+		}
+
+		if err := createVotePoolCommand.Exec(createVoteDTO); err != nil {
+			s.Write([]byte(err.Error()))
+			s.Write([]byte(err.Error()))
+			return
+		}
+
+		s.Write([]byte("VOTE REGISTERED!"))
+	})
+
+	v1.GET("/ws", func(c echo.Context) error {
+		return websocket.HandleRequest(c.Response().Writer, c.Request())
+	})
+
+	app.Logger.Fatal(app.Start(":4000"))
 }

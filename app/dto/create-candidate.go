@@ -1,7 +1,7 @@
 package dto
 
 type CreateCandidateDTO struct {
-	Code          string `json:"code"`
+	ImageURL      string `json:"image_url"`
 	Name          string `json:"name"`
 	PartyInitials string `json:"party_initials"`
 }

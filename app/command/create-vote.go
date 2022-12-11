@@ -52,9 +52,11 @@ func (c *CreateVoteCommand) Exec(createVotesDTO []dto.CreateVoteDTO) error {
 		key := fmt.Sprintf("%s:%s", createVoteDTO.Email, createVoteDTO.Password)
 		voterAddress := valueobject.GetAddress(createVoteDTO.Mnemonic, key)
 		voter, err := c.findVoterQuery.Exec("address = ?", voterAddress)
+
 		if err != nil {
 			return err
 		}
+
 		vote := entity.Vote{
 			CandidatureCode: candidature.Code,
 			VoterAddress:    voter.Address,
@@ -68,14 +70,12 @@ func (c *CreateVoteCommand) Exec(createVotesDTO []dto.CreateVoteDTO) error {
 
 		if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
 			votes = append(votes, vote)
-			continue
+		} else {
+			if lastVote.Candidature.Year == time.Now().Year() {
+				return errors.New("voter already voted in this year")
+			}
+			votes = append(votes, vote)
 		}
-
-		if lastVote.Candidature.Year == time.Now().Year() {
-			return errors.New("voter already voted in this year")
-		}
-
-		votes = append(votes, vote)
 	}
 
 	block, err := c.createBlockCommand.Exec(votes)

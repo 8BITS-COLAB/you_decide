@@ -1,7 +1,6 @@
 package command
 
 import (
-	"errors"
 	"time"
 
 	"github.com/ElioenaiFerrari/youdecide/app/query"
@@ -27,27 +26,7 @@ func (c *CreateBlockCommand) Exec(votes []entity.Vote) (*entity.Block, error) {
 	lastBlock, err := c.findLastBlockQuery.Exec()
 
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			lastBlock = &entity.Block{
-				Votes:     votes,
-				Index:     0,
-				PrevHash:  "GENESIS",
-				Timestamp: int(time.Now().UnixNano()),
-			}
-
-			lastBlockBytes, _ := sonic.Marshal(lastBlock)
-			signature, nonce := valueobject.NewSignature(string(lastBlockBytes), 3)
-
-			lastBlock.Hash = signature
-			lastBlock.Nonce = nonce
-
-			if err := c.db.Create(&lastBlock).Error; err != nil {
-				return nil, err
-			}
-
-		} else {
-			return nil, err
-		}
+		return nil, err
 	}
 
 	block := entity.Block{

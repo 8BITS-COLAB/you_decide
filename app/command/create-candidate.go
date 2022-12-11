@@ -32,6 +32,7 @@ func (c *CreateCandidateCommand) Exec(createCandidateDTO dto.CreateCandidateDTO)
 	candidate := entity.Candidate{
 		Name:          createCandidateDTO.Name,
 		PartyInitials: party.Initials,
+		ImageURL:      createCandidateDTO.ImageURL,
 	}
 
 	if err := c.validator.Struct(candidate); err != nil {

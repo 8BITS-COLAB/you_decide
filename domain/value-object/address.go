@@ -1,6 +1,8 @@
 package valueobject
 
 import (
+	"strings"
+
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
 )
@@ -12,10 +14,11 @@ func NewAddress(password string) (string, string) {
 	masterKey, _ := bip32.NewMasterKey(seed)
 	publicKey := masterKey.PublicKey()
 
-	return publicKey.String(), mnemonic
+	return publicKey.String(), strings.ReplaceAll(mnemonic, " ", "-")
 }
 
 func GetAddress(mnemonic, password string) string {
+	mnemonic = strings.ReplaceAll(mnemonic, "-", " ")
 	seed := bip39.NewSeed(mnemonic, password)
 	masterKey, _ := bip32.NewMasterKey(seed)
 	publicKey := masterKey.PublicKey()
