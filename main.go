@@ -15,6 +15,7 @@ import (
 	"github.com/ElioenaiFerrari/youdecide/domain/entity"
 	"github.com/bytedance/sonic"
 	"github.com/go-playground/validator/v10"
+	"github.com/jaswdr/faker"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/olahol/melody"
@@ -94,40 +95,42 @@ func main() {
 	}()
 	go worker(ch, new(sync.RWMutex), createVoteCommand, 2)
 
-	pt, _ := createPartyCommand.Exec(dto.CreatePartyDTO{
-		Initials: "PT",
-		Name:     "Partido dos Trabalhadores",
+	fake := faker.New()
+
+	party1, _ := createPartyCommand.Exec(dto.CreatePartyDTO{
+		Initials: fake.Lorem().Word(),
+		Name:     fake.Lorem().Sentence(3),
 	})
 
-	psl, _ := createPartyCommand.Exec(dto.CreatePartyDTO{
-		Initials: "PSL",
-		Name:     "Partido Social Liberal",
+	party2, _ := createPartyCommand.Exec(dto.CreatePartyDTO{
+		Initials: fake.Lorem().Word(),
+		Name:     fake.Lorem().Sentence(3),
 	})
 
-	lula, _ := createCandidateCommand.Exec(dto.CreateCandidateDTO{
-		Name:          "Lula",
-		PartyInitials: pt.Initials,
-		ImageURL:      "https://s2.glbimg.com/4whWaUxUmO9OZKbeUXLvPK9nnZ0=/1200x/smart/filters:cover():strip_icc()/i.s3.glbimg.com/v1/AUTH_59edd422c0c84a879bd37670ae4f538a/internal_photos/bs/2022/N/A/x4O7j9R5i4N0ecWBU7vw/lula-31.jpg",
+	candidate1, _ := createCandidateCommand.Exec(dto.CreateCandidateDTO{
+		Name:          fake.Person().FirstName(),
+		PartyInitials: party1.Initials,
+		ImageURL:      "https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=800",
 	})
 
-	bolsonaro, _ := createCandidateCommand.Exec(dto.CreateCandidateDTO{
-		Name:          "Bolsonaro",
-		PartyInitials: psl.Initials,
-		ImageURL:      "https://uploads.metropoles.com/wp-content/uploads/2022/11/01174231/Apo%CC%81s-reunia%CC%83o-com-ministros-e-aliados-jair-Bolsonaro-fara%CC%81-primeiro-pronunciamento-aos-brasileiros-9.jpeg",
+	candidate2, _ := createCandidateCommand.Exec(dto.CreateCandidateDTO{
+		Name:          fake.Person().FirstName(),
+		PartyInitials: party2.Initials,
+		ImageURL:      "https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=800",
 	})
 
-	candidatureLula, _ := createCandidatureCommand.Exec(dto.CreateCandidatureDTO{
-		Code:          "13",
-		CandidateName: lula.Name,
+	candidature1, _ := createCandidatureCommand.Exec(dto.CreateCandidatureDTO{
+		Code:          fake.UUID().V4(),
+		CandidateName: candidate1.Name,
 		Position:      "presidência",
-		Year:          2022,
+		Year:          time.Now().Year(),
 	})
 
 	_, _ = createCandidatureCommand.Exec(dto.CreateCandidatureDTO{
-		Code:          "22",
-		CandidateName: bolsonaro.Name,
+		Code:          fake.UUID().V4(),
+		CandidateName: candidate2.Name,
 		Position:      "presidência",
-		Year:          2022,
+		Year:          time.Now().Year(),
 	})
 
 	voter1, mnemonic1, err := createVoterCommand.Exec(dto.CreateVoterDTO{
@@ -164,7 +167,7 @@ func main() {
 
 	if err := createVotePoolCommand.Exec(dto.CreateVoteDTO{
 		Email:           voter1.Email,
-		CandidatureCode: candidatureLula.Code,
+		CandidatureCode: candidature1.Code,
 		Mnemonic:        *mnemonic1,
 		Password:        "123456",
 	}); err != nil {
@@ -183,7 +186,7 @@ func main() {
 
 	app.Renderer = t
 
-	app.GET("/", func(c echo.Context) error {
+	app.GET("/candidatures", func(c echo.Context) error {
 		candidatures, err := listCandidaturesQuery.Exec("year = ?", time.Now().Year())
 
 		if err != nil {
@@ -191,6 +194,16 @@ func main() {
 		}
 
 		return c.Render(http.StatusOK, "index", candidatures)
+	})
+
+	app.GET("/candidatures/:code", func(c echo.Context) error {
+		candidature, err := findCandidatureQuery.Exec("code = ? AND year = ?", c.Param("code"), time.Now().Year())
+
+		if err != nil {
+			return err
+		}
+
+		return c.Render(http.StatusOK, "candidature", candidature)
 	})
 
 	websocket.HandleMessage(func(s *melody.Session, b []byte) {

@@ -18,7 +18,7 @@ func NewFindCandidatureQuery(db *gorm.DB) *FindCandidatureQuery {
 func (q *FindCandidatureQuery) Exec(where ...interface{}) (*entity.Candidature, error) {
 	var candidature entity.Candidature
 
-	if err := q.db.First(&candidature, where...).Error; err != nil {
+	if err := q.db.Preload("Candidate").First(&candidature, where...).Error; err != nil {
 		return nil, err
 	}
 
